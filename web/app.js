@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearConsoleBtn = document.getElementById('clear-console-btn');
 
     // 状態管理
-    let localFilesList = []; // 変換対象ファイル
+    let localFilesList = []; // 読み込んだ全ファイル（HTML以外も含む）
 
     // --- 共通UIユーティリティ ---
     function appendLog(text, type = 'info') {
@@ -56,8 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateSubmitButtonState() {
         if (localFilesList.length > 0) {
+            const htmlCount = localFilesList.filter(f => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                return ext === 'html' || ext === 'htm';
+            }).length;
             submitBtn.disabled = false;
-            submitBtn.querySelector('.btn-text').innerText = `変換してZIPダウンロード (${localFilesList.length}個のファイル)`;
+            submitBtn.querySelector('.btn-text').innerText = `変換してZIPダウンロード (HTML: ${htmlCount}個 / 総ファイル: ${localFilesList.length}個)`;
         } else {
             submitBtn.disabled = true;
             submitBtn.querySelector('.btn-text').innerText = '変換してZIPダウンロード';
@@ -97,17 +101,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // エントリを解析してHTMLファイルを抽出
+    // エントリを解析して全ファイルを抽出
     async function getFilesFromEntry(entry) {
         const files = [];
         if (entry.isFile) {
             const file = await new Promise((resolve) => entry.file(resolve));
-            const ext = file.name.split('.').pop().toLowerCase();
-            if (ext === 'html' || ext === 'htm') {
-                // 相対パスを設定 (先頭のスラッシュを削除)
-                file.relativePath = entry.fullPath.startsWith('/') ? entry.fullPath.substring(1) : entry.fullPath;
-                files.push(file);
-            }
+            // ファイルの相対パスを設定 (先頭のスラッシュを削除)
+            file.relativePath = entry.fullPath.startsWith('/') ? entry.fullPath.substring(1) : entry.fullPath;
+            files.push(file);
         } else if (entry.isDirectory) {
             const dirReader = entry.createReader();
             const entries = await readAllEntries(dirReader);
@@ -156,11 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const ext = file.name.split('.').pop().toLowerCase();
-            if (ext === 'html' || ext === 'htm') {
-                file.relativePath = file.webkitRelativePath;
-                localFilesList.push(file);
-            }
+            file.relativePath = file.webkitRelativePath;
+            localFilesList.push(file);
         }
 
         handleFilesSelected();
@@ -168,12 +166,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleFilesSelected() {
         if (localFilesList.length > 0) {
+            const htmlCount = localFilesList.filter(f => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                return ext === 'html' || ext === 'htm';
+            }).length;
+
             selectedFilesSummary.classList.remove('hidden');
-            selectedFilesCount.innerText = localFilesList.length;
-            appendLog(`ファイルを検出しました。変換準備が整いました。 (対象HTMLファイル: ${localFilesList.length}個)`, 'success');
+            selectedFilesCount.innerText = `${localFilesList.length} (うちHTML: ${htmlCount})`;
+            appendLog(`ファイルを検出しました。 (総ファイル数: ${localFilesList.length}個、HTMLファイル: ${htmlCount}個)`, 'success');
         } else {
             selectedFilesSummary.classList.add('hidden');
-            appendLog('対象となるHTMLファイル (.html / .htm) が見つかりませんでした。', 'skip');
+            appendLog('対象となるファイルが見つかりませんでした。', 'skip');
         }
         updateSubmitButtonState();
     }
@@ -291,49 +294,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 const relPath = file.relativePath || file.name;
                 updateProgress(progressVal, `ファイルを処理中 (${i + 1}/${localFilesList.length}): ${relPath}`);
 
+                const ext = file.name.split('.').pop().toLowerCase();
+                const isHtml = (ext === 'html' || ext === 'htm');
+
                 try {
                     const arrayBuffer = await file.arrayBuffer();
-                    const result = processFileContent(arrayBuffer);
 
-                    if (result.success) {
-                        if (result.status === 'success') {
-                            successCount++;
-                            updateCounts('success', successCount);
-                            appendLog(`[変換成功] ${relPath} (${result.message})`, 'success');
-                            
-                            // 変換後のテキストをUTF-8で追加
-                            zip.file(relPath, result.convertedText);
+                    if (isHtml) {
+                        // HTMLファイルの場合は文字コード変換を実行
+                        const result = processFileContent(arrayBuffer);
 
-                            // バックアップを作成する場合、元データを.bakで同梱
-                            if (makeBackup) {
-                                zip.file(relPath + '.bak', new Uint8Array(arrayBuffer));
+                        if (result.success) {
+                            if (result.status === 'success') {
+                                successCount++;
+                                updateCounts('success', successCount);
+                                appendLog(`[HTML変換] ${relPath} (${result.message})`, 'success');
+                                
+                                // 変換後のテキストをUTF-8で追加
+                                zip.file(relPath, result.convertedText);
+
+                                // バックアップを作成する場合、元データを.bakで同梱
+                                if (makeBackup) {
+                                    zip.file(relPath + '.bak', new Uint8Array(arrayBuffer));
+                                }
+                            } else {
+                                skipCount++;
+                                updateCounts('skip', skipCount);
+                                appendLog(`[HTMLスキップ] ${relPath} (${result.message})`, 'skip');
+                                
+                                // 変換不要な場合も元のテキストをそのまま格納
+                                zip.file(relPath, result.originalText);
                             }
                         } else {
-                            skipCount++;
-                            updateCounts('skip', skipCount);
-                            appendLog(`[スキップ] ${relPath} (${result.message})`, 'skip');
+                            errorCount++;
+                            updateCounts('error', errorCount);
+                            appendLog(`[HTMLエラー] ${relPath} (理由: ${result.message})`, 'error');
                             
-                            // 変換不要な場合も元のテキストをそのまま格納
-                            zip.file(relPath, result.originalText);
+                            // エラー時も元のバイナリをそのまま入れる
+                            zip.file(relPath, new Uint8Array(arrayBuffer));
                         }
                     } else {
-                        errorCount++;
-                        updateCounts('error', errorCount);
-                        appendLog(`[エラー] ${relPath} (理由: ${result.message})`, 'error');
-                        
-                        // エラー時も元のバイナリをそのまま入れる
+                        // HTML以外（画像、CSS、JS、その他）はバイナリのまま無変換でZIPに追加
                         zip.file(relPath, new Uint8Array(arrayBuffer));
                     }
                 } catch (e) {
                     errorCount++;
                     updateCounts('error', errorCount);
-                    appendLog(`[エラー] ${relPath} (読み込み失敗: ${e.message})`, 'error');
+                    appendLog(`[エラー] ${relPath} (読み込み/処理失敗: ${e.message})`, 'error');
                     zip.file(relPath, file);
                 }
 
                 // UIのレンダリングをスムーズにするためのウェイト
                 if (i % 5 === 0) {
-                    await new Promise(resolve => setTimeout(resolve, 15));
+                    await new Promise(resolve => setTimeout(resolve, 10));
                 }
             }
 
@@ -356,8 +369,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             updateProgress(100, '変換完了');
             appendLog('----------------------------------------', 'info');
-            appendLog(`全ての処理が完了しました！ (変換成功: ${successCount}, スキップ: ${skipCount}, エラー: ${errorCount})`, 'system');
-            appendLog('変換済みのファイル構造を含むZIPアーカイブがダウンロードされました。', 'system');
+            appendLog(`全ての処理が完了しました！ (変換完了: ${successCount}, スキップ: ${skipCount}, エラー: ${errorCount})`, 'system');
+            appendLog('フォルダ構造とその他ファイルを完全に維持したZIPアーカイブがダウンロードされました。', 'system');
 
         } catch (e) {
             console.error(e);
