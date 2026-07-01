@@ -105,6 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function getFilesFromEntry(entry) {
         const files = [];
         if (entry.isFile) {
+            // ~$一時ファイルやシステムファイル (.DS_Store / Thumbs.db) は除外
+            if (entry.name.startsWith('~$') || entry.name === '.DS_Store' || entry.name === 'Thumbs.db') {
+                return files;
+            }
             const file = await new Promise((resolve) => entry.file(resolve));
             // ファイルの相対パスを設定 (先頭のスラッシュを削除)
             file.relativePath = entry.fullPath.startsWith('/') ? entry.fullPath.substring(1) : entry.fullPath;
@@ -157,6 +161,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
+            // ~$一時ファイルやシステムファイル (.DS_Store / Thumbs.db) は除外
+            if (file.name.startsWith('~$') || file.name === '.DS_Store' || file.name === 'Thumbs.db') {
+                continue;
+            }
             file.relativePath = file.webkitRelativePath;
             localFilesList.push(file);
         }
