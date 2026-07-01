@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedFilesSummary = document.getElementById('selected-files-summary');
     const selectedFilesCount = document.getElementById('selected-files-count');
     const backupToggle = document.getElementById('backup-toggle');
+    const wordFixToggle = document.getElementById('word-fix-toggle');
 
     const form = document.getElementById('converter-form');
     const submitBtn = document.getElementById('submit-btn');
@@ -215,7 +216,53 @@ document.addEventListener('DOMContentLoaded', () => {
         return { content: newContent, modified };
     }
 
-    function processFileContent(arrayBuffer) {
+    // --- Word HTMLレイアウト修正ロジック ---
+    function fixWordHtmlLayout(content) {
+        let clean = content;
+
+        // 1. <table> タグ内の align=left または align=right 属性を除去
+        clean = clean.replace(/(<table[^>]*?)\balign=['"]?(left|right)['"]?/gi, '$1');
+
+        // 2. テーブル間の不要な空の段落タグを削除 (o:p &nbsp; もしくは空文字列などを含むpタグ)
+        const emptyParagraphRegex = /<p[^>]*?>\s*<span[^>]*?font-size:\s*1\.0pt[^>]*?>.*?<\/span>\s*<\/p>/gi;
+        clean = clean.replace(emptyParagraphRegex, '');
+
+        // 3. ビューポートメタタグの追加（head内になければ追加）
+        if (!/<meta[^>]*?name=['"]?viewport['"]?/i.test(clean)) {
+            clean = clean.replace(/(<head[^>]*?>)/i, `$1\n <meta name="viewport" content="width=device-width, initial-scale=1.0">`);
+        }
+
+        // 4. レスポンシブ＆回り込み解除CSSの追加（</head>の直前）
+        const customStyle = `
+<style>
+ /* macnizer レスポンシブ & 回り込み解除の修正 */
+ @media screen and (max-width: 768px) {
+   table.MsoNormalTable, table[class*="Mso"] {
+     width: 100% !important;
+     max-width: 100% !important;
+     table-layout: auto !important;
+     float: none !important;
+     clear: both !important;
+   }
+   td {
+     width: auto !important;
+     white-space: normal !important;
+   }
+ }
+ table {
+   float: none !important;
+   clear: both !important;
+ }
+</style>
+`;
+        if (!/macnizer レスポンシブ/i.test(clean)) {
+            clean = clean.replace(/(<\/head>)/i, `${customStyle}\n$1`);
+        }
+
+        return clean;
+    }
+
+    function processFileContent(arrayBuffer, fixWordLayout = false) {
         const uint8Array = new Uint8Array(arrayBuffer);
         
         let decodedText = null;
@@ -246,17 +293,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // 文字コード記述の置換
-        const { content: newText, modified: descModified } = convertContent(decodedText);
+        let { content: newText, modified: descModified } = convertContent(decodedText);
+        
+        let wordFixed = false;
+        if (fixWordLayout) {
+            const originalText = newText;
+            newText = fixWordHtmlLayout(newText);
+            if (newText !== originalText) {
+                wordFixed = true;
+            }
+        }
         
         const encodingNeedsChange = (detectedEncoding === 'shift-jis');
         
-        if (!encodingNeedsChange && !descModified) {
+        if (!encodingNeedsChange && !descModified && !wordFixed) {
             return { success: true, status: 'skip', message: 'すでにUTF-8（変換不要）', originalText: decodedText };
         }
         
         const messageParts = [];
         if (encodingNeedsChange) messageParts.push('エンコード変換 (Shift-JIS -> UTF-8)');
         if (descModified) messageParts.push('文字コードタグ書換 (utf-8)');
+        if (wordFixed) messageParts.push('Wordレイアウト修正');
 
         return {
             success: true,
@@ -286,6 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
         consoleOutput.innerHTML = '';
 
         const makeBackup = backupToggle.checked;
+        const fixWordLayout = wordFixToggle.checked;
         appendLog(`一括変換処理を開始します... (対象ファイル: ${localFilesList.length}個)`, 'system');
         updateProgress(5, 'ZIPアーカイブの準備中...');
 
@@ -309,8 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const arrayBuffer = await file.arrayBuffer();
 
                     if (isHtml) {
-                        // HTMLファイルの場合は文字コード変換を実行
-                        const result = processFileContent(arrayBuffer);
+                        // HTMLファイルの場合は文字コード変換およびWordレイアウト修正を実行
+                        const result = processFileContent(arrayBuffer, fixWordLayout);
 
                         if (result.success) {
                             if (result.status === 'success') {
