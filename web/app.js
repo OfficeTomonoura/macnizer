@@ -1,0 +1,373 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // UI要素の取得
+    const dropZone = document.getElementById('drop-zone');
+    const folderInput = document.getElementById('folder-input');
+    const selectedFilesSummary = document.getElementById('selected-files-summary');
+    const selectedFilesCount = document.getElementById('selected-files-count');
+    const backupToggle = document.getElementById('backup-toggle');
+
+    const form = document.getElementById('converter-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const btnSpinner = document.getElementById('btn-spinner');
+    
+    const resultsPanel = document.getElementById('results-panel');
+    const progressContainer = document.getElementById('progress-container');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    const progressPercent = document.getElementById('progress-percent');
+    
+    const countSuccess = document.getElementById('count-success');
+    const countSkip = document.getElementById('count-skip');
+    const countError = document.getElementById('count-error');
+    
+    const consoleOutput = document.getElementById('console-output');
+    const clearConsoleBtn = document.getElementById('clear-console-btn');
+
+    // 状態管理
+    let localFilesList = []; // 変換対象ファイル
+
+    // --- 共通UIユーティリティ ---
+    function appendLog(text, type = 'info') {
+        const line = document.createElement('div');
+        line.className = `console-line ${type}`;
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        line.innerText = `[${timeStr}] ${text}`;
+        consoleOutput.appendChild(line);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    clearConsoleBtn.addEventListener('click', () => {
+        consoleOutput.innerHTML = '';
+        appendLog('コンソールがクリアされました', 'system');
+    });
+
+    function updateProgress(percent, text) {
+        progressFill.style.width = `${percent}%`;
+        progressText.innerText = text;
+        progressPercent.innerText = `${percent}%`;
+    }
+
+    function updateCounts(type, count) {
+        if (type === 'success') countSuccess.innerText = count;
+        if (type === 'skip') countSkip.innerText = count;
+        if (type === 'error') countError.innerText = count;
+    }
+
+    function updateSubmitButtonState() {
+        if (localFilesList.length > 0) {
+            submitBtn.disabled = false;
+            submitBtn.querySelector('.btn-text').innerText = `変換してZIPダウンロード (${localFilesList.length}個のファイル)`;
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.querySelector('.btn-text').innerText = '変換してZIPダウンロード';
+        }
+    }
+
+    // --- ドラッグ＆ドロップ ＆ フォルダ選択ロジック ---
+    
+    // ドラッグ＆ドロップのビジュアル効果
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    // ディレクトリのエントリを再帰的に読み込むためのヘルパー
+    function readAllEntries(dirReader) {
+        const entries = [];
+        return new Promise((resolve) => {
+            const read = () => {
+                dirReader.readEntries((results) => {
+                    if (results.length === 0) {
+                        resolve(entries);
+                    } else {
+                        entries.push(...results);
+                        read();
+                    }
+                }, (err) => {
+                    console.error("Read entries error", err);
+                    resolve(entries);
+                });
+            };
+            read();
+        });
+    }
+
+    // エントリを解析してHTMLファイルを抽出
+    async function getFilesFromEntry(entry) {
+        const files = [];
+        if (entry.isFile) {
+            const file = await new Promise((resolve) => entry.file(resolve));
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'html' || ext === 'htm') {
+                // 相対パスを設定 (先頭のスラッシュを削除)
+                file.relativePath = entry.fullPath.startsWith('/') ? entry.fullPath.substring(1) : entry.fullPath;
+                files.push(file);
+            }
+        } else if (entry.isDirectory) {
+            const dirReader = entry.createReader();
+            const entries = await readAllEntries(dirReader);
+            for (const childEntry of entries) {
+                const childFiles = await getFilesFromEntry(childEntry);
+                files.push(...childFiles);
+            }
+        }
+        return files;
+    }
+
+    // ファイルドロップ時の処理
+    dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        
+        const items = e.dataTransfer.items;
+        if (!items) return;
+
+        appendLog('ドロップされた要素をスキャンしています...', 'info');
+        localFilesList = [];
+
+        const scanPromises = [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.kind === 'file') {
+                const entry = item.webkitGetAsEntry();
+                if (entry) {
+                    scanPromises.push(getFilesFromEntry(entry));
+                }
+            }
+        }
+
+        const results = await Promise.all(scanPromises);
+        results.forEach(fileList => {
+            localFilesList.push(...fileList);
+        });
+
+        handleFilesSelected();
+    });
+
+    // フォルダ選択ボタンでの処理
+    folderInput.addEventListener('change', () => {
+        const files = folderInput.files;
+        localFilesList = [];
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'html' || ext === 'htm') {
+                file.relativePath = file.webkitRelativePath;
+                localFilesList.push(file);
+            }
+        }
+
+        handleFilesSelected();
+    });
+
+    function handleFilesSelected() {
+        if (localFilesList.length > 0) {
+            selectedFilesSummary.classList.remove('hidden');
+            selectedFilesCount.innerText = localFilesList.length;
+            appendLog(`ファイルを検出しました。変換準備が整いました。 (対象HTMLファイル: ${localFilesList.length}個)`, 'success');
+        } else {
+            selectedFilesSummary.classList.add('hidden');
+            appendLog('対象となるHTMLファイル (.html / .htm) が見つかりませんでした。', 'skip');
+        }
+        updateSubmitButtonState();
+    }
+
+    // --- 文字コード置換コアロジック ---
+    const RE_CHARSET_HTML5 = /(<meta\s+charset\s*=\s*['"]?)(shift[-_]?jis|sjis|x-sjis|cp932|ms_kanji)(['"]?\s*\/?>)/i;
+    const RE_CHARSET_HTML4 = /(content\s*=\s*['"][^'"]*charset\s*=\s*)(shift[-_]?jis|sjis|x-sjis|cp932|ms_kanji)(['"]?[^>]*>)/i;
+    const RE_CHARSET_XML = /(<\?xml\s+[^>]*encoding\s*=\s*['"]?)(shift[-_]?jis|sjis|x-sjis|cp932|ms_kanji)(['"]?[^>]*\?>)/i;
+
+    function convertContent(content) {
+        let modified = false;
+        
+        let newContent = content.replace(RE_CHARSET_HTML5, (match, p1, p2, p3) => {
+            modified = true;
+            return `${p1}utf-8${p3}`;
+        });
+        
+        newContent = newContent.replace(RE_CHARSET_HTML4, (match, p1, p2, p3) => {
+            modified = true;
+            return `${p1}utf-8${p3}`;
+        });
+
+        newContent = newContent.replace(RE_CHARSET_XML, (match, p1, p2, p3) => {
+            modified = true;
+            return `${p1}utf-8${p3}`;
+        });
+        
+        return { content: newContent, modified };
+    }
+
+    function processFileContent(arrayBuffer) {
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        let decodedText = null;
+        let detectedEncoding = null;
+        
+        // 1. UTF-8でデコードを試みる
+        try {
+            const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+            decodedText = utf8Decoder.decode(uint8Array);
+            detectedEncoding = 'utf-8';
+        } catch (e) {
+            // UTF-8ではない
+        }
+        
+        // 2. CP932 / Shift-JISでデコードを試みる
+        if (decodedText === null) {
+            try {
+                const sjisDecoder = new TextDecoder('shift-jis', { fatal: true });
+                decodedText = sjisDecoder.decode(uint8Array);
+                detectedEncoding = 'shift-jis';
+            } catch (e) {
+                // デコード不能
+            }
+        }
+        
+        if (decodedText === null) {
+            return { success: false, status: 'error', message: '文字コードを判定できませんでした (UTF-8 / Shift-JIS ではありません)' };
+        }
+        
+        // 文字コード記述の置換
+        const { content: newText, modified: descModified } = convertContent(decodedText);
+        
+        const encodingNeedsChange = (detectedEncoding === 'shift-jis');
+        
+        if (!encodingNeedsChange && !descModified) {
+            return { success: true, status: 'skip', message: 'すでにUTF-8（変換不要）', originalText: decodedText };
+        }
+        
+        const messageParts = [];
+        if (encodingNeedsChange) messageParts.push('エンコード変換 (Shift-JIS -> UTF-8)');
+        if (descModified) messageParts.push('文字コードタグ書換 (utf-8)');
+
+        return {
+            success: true,
+            status: 'success',
+            message: messageParts.join(' & '),
+            convertedText: newText,
+            originalText: decodedText
+        };
+    }
+
+    // --- 変換実行アクション ---
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (localFilesList.length === 0) return;
+
+        // UI初期化
+        submitBtn.disabled = true;
+        btnSpinner.style.display = 'block';
+        resultsPanel.classList.remove('hidden');
+        progressContainer.classList.remove('hidden');
+        progressFill.style.background = 'var(--primary-gradient)';
+        
+        countSuccess.innerText = '0';
+        countSkip.innerText = '0';
+        countError.innerText = '0';
+        consoleOutput.innerHTML = '';
+
+        const makeBackup = backupToggle.checked;
+        appendLog(`一括変換処理を開始します... (対象ファイル: ${localFilesList.length}個)`, 'system');
+        updateProgress(5, 'ZIPアーカイブの準備中...');
+
+        try {
+            const zip = new JSZip();
+            let successCount = 0;
+            let skipCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < localFilesList.length; i++) {
+                const file = localFilesList[i];
+                const progressVal = 10 + Math.floor((i / localFilesList.length) * 70);
+                
+                const relPath = file.relativePath || file.name;
+                updateProgress(progressVal, `ファイルを処理中 (${i + 1}/${localFilesList.length}): ${relPath}`);
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = processFileContent(arrayBuffer);
+
+                    if (result.success) {
+                        if (result.status === 'success') {
+                            successCount++;
+                            updateCounts('success', successCount);
+                            appendLog(`[変換成功] ${relPath} (${result.message})`, 'success');
+                            
+                            // 変換後のテキストをUTF-8で追加
+                            zip.file(relPath, result.convertedText);
+
+                            // バックアップを作成する場合、元データを.bakで同梱
+                            if (makeBackup) {
+                                zip.file(relPath + '.bak', new Uint8Array(arrayBuffer));
+                            }
+                        } else {
+                            skipCount++;
+                            updateCounts('skip', skipCount);
+                            appendLog(`[スキップ] ${relPath} (${result.message})`, 'skip');
+                            
+                            // 変換不要な場合も元のテキストをそのまま格納
+                            zip.file(relPath, result.originalText);
+                        }
+                    } else {
+                        errorCount++;
+                        updateCounts('error', errorCount);
+                        appendLog(`[エラー] ${relPath} (理由: ${result.message})`, 'error');
+                        
+                        // エラー時も元のバイナリをそのまま入れる
+                        zip.file(relPath, new Uint8Array(arrayBuffer));
+                    }
+                } catch (e) {
+                    errorCount++;
+                    updateCounts('error', errorCount);
+                    appendLog(`[エラー] ${relPath} (読み込み失敗: ${e.message})`, 'error');
+                    zip.file(relPath, file);
+                }
+
+                // UIのレンダリングをスムーズにするためのウェイト
+                if (i % 5 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 15));
+                }
+            }
+
+            updateProgress(85, 'ZIPアーカイブをビルド中...');
+            appendLog('ZIPファイルを生成・圧縮しています...', 'info');
+
+            const content = await zip.generateAsync({ type: 'blob' });
+
+            updateProgress(95, 'ダウンロード用データを構築中...');
+            
+            // 自動ダウンロード
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `macnizer_converted_${Date.now()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            updateProgress(100, '変換完了');
+            appendLog('----------------------------------------', 'info');
+            appendLog(`全ての処理が完了しました！ (変換成功: ${successCount}, スキップ: ${skipCount}, エラー: ${errorCount})`, 'system');
+            appendLog('変換済みのファイル構造を含むZIPアーカイブがダウンロードされました。', 'system');
+
+        } catch (e) {
+            console.error(e);
+            appendLog(`致命的なエラーが発生しました: ${e.message}`, 'error');
+            updateProgress(100, 'エラー中断');
+            progressFill.style.background = 'var(--error-color)';
+        } finally {
+            submitBtn.disabled = false;
+            btnSpinner.style.display = 'none';
+            updateSubmitButtonState();
+        }
+    });
+});

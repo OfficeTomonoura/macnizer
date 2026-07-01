@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Charset Converter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <div class="background-decorations">
+        <div class="blob blob-purple"></div>
+        <div class="blob blob-blue"></div>
+    </div>
+
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo">
+                <span class="icon">⚡</span>
+                <h1>HTML Charset Converter</h1>
+            </div>
+            <p class="subtitle">Shift-JIS HTMLファイルを探索し、文字コード表記とファイル本体をUTF-8へ一括変換します</p>
+        </header>
+
+        <main class="app-content">
+            <!-- 設定・実行カード -->
+            <section class="card control-panel">
+                <form id="converter-form" onsubmit="return false;">
+                    
+                    <!-- フォルダ選択とドラッグ＆ドロップエリア -->
+                    <div class="form-group">
+                        <label>変換対象のフォルダまたはファイル</label>
+                        <div id="drop-zone" class="drop-zone">
+                            <span class="drop-icon">📥</span>
+                            <p>ここにフォルダまたはファイルをドラッグ＆ドロップ</p>
+                            <span class="or-text">または</span>
+                            <label for="folder-input" class="select-files-btn">
+                                フォルダを選択
+                            </label>
+                            <input 
+                                type="file" 
+                                id="folder-input" 
+                                webkitdirectory 
+                                directory 
+                                multiple 
+                                class="hidden-file-input"
+                            >
+                        </div>
+                        <div id="selected-files-summary" class="selected-files-summary hidden">
+                            <span class="summary-icon">📄</span>
+                            <span class="summary-text">変換可能なHTMLファイル (.html / .htm): <strong id="selected-files-count">0</strong> 個</span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="toggle-group">
+                            <label class="switch">
+                                <input type="checkbox" id="backup-toggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label">
+                                <strong>元ファイルのバックアップを同梱する</strong>
+                                <span class="toggle-desc">ZIPファイル内に変換前のオリジナルファイルを <code>.bak</code> 拡張子で同梱します</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- 実行ボタン -->
+                    <button type="submit" id="submit-btn" class="btn btn-primary" disabled>
+                        <span class="btn-text">変換してZIPダウンロード</span>
+                        <div class="spinner" id="btn-spinner"></div>
+                    </button>
+                </form>
+            </section>
+
+            <!-- 処理状況・結果表示 (初期非表示) -->
+            <section id="results-panel" class="results-panel hidden">
+                <!-- ステータスサマリー -->
+                <div class="summary-cards">
+                    <div class="summary-card success">
+                        <div class="card-icon">✅</div>
+                        <div class="card-info">
+                            <span class="label">変換成功</span>
+                            <span class="value" id="count-success">0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card skip">
+                        <div class="card-icon">⏭️</div>
+                        <div class="card-info">
+                            <span class="label">スキップ</span>
+                            <span class="value" id="count-skip">0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card error">
+                        <div class="card-icon">❌</div>
+                        <div class="card-info">
+                            <span class="label">エラー</span>
+                            <span class="value" id="count-error">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 進捗表示 -->
+                <div class="progress-container hidden" id="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-status">
+                        <span id="progress-text">処理中...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                </div>
+
+                <!-- リアルタイムコンソールログ -->
+                <div class="card console-card">
+                    <div class="console-header">
+                        <div class="window-buttons">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        <span class="console-title">Console Output</span>
+                        <button id="clear-console-btn" class="console-action-btn">クリア</button>
+                    </div>
+                    <div class="console-body" id="console-output">
+                        <div class="console-line system">システム待機中...</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>Antigravity Powered | UTF-8 Migration Utility for macOS</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
