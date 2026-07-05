@@ -9,6 +9,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const fixedLayoutToggle = document.getElementById('fixed-layout-toggle');
     const centerContentToggle = document.getElementById('center-content-toggle');
 
+    // 「レイアウトバグ修正」がOFFの場合、それに従属する「レイアウト固定化」「レイアウト美麗化」も自動でOFFにする
+    wordFixToggle.addEventListener('change', () => {
+        if (!wordFixToggle.checked) {
+            fixedLayoutToggle.checked = false;
+            centerContentToggle.checked = false;
+        }
+    });
+
+    // 「レイアウトバグ修正」がOFFの間は、従属する2つのトグルをONにできないようにする
+    [fixedLayoutToggle, centerContentToggle].forEach((dependentToggle) => {
+        dependentToggle.addEventListener('change', () => {
+            if (dependentToggle.checked && !wordFixToggle.checked) {
+                dependentToggle.checked = false;
+                alert('先に「レイアウトバグ修正」をONにしてください。');
+            }
+        });
+    });
+
     const form = document.getElementById('converter-form');
     const submitBtn = document.getElementById('submit-btn');
     const btnSpinner = document.getElementById('btn-spinner');
@@ -485,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = URL.createObjectURL(content);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `macnizer_converted_${Date.now()}.zip`;
+            a.download = 'macnizer_converted.zip';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

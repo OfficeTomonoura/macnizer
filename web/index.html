@@ -55,18 +55,7 @@
                         </div>
                     </div>
 
-                    <div class="form-row">
-                        <div class="toggle-group">
-                            <label class="switch">
-                                <input type="checkbox" id="backup-toggle" checked>
-                                <span class="slider"></span>
-                            </label>
-                            <span class="toggle-label">
-                                <strong>元ファイルのバックアップを同梱する</strong>
-                                <span class="toggle-desc">ZIPファイル内に変換前のオリジナルファイルを <code>.bak</code> 拡張子で同梱します</span>
-                            </span>
-                        </div>
-                    </div>
+                    <h3 class="options-heading">変換オプション</h3>
 
                     <div class="form-row">
                         <div class="toggle-group">
@@ -75,8 +64,8 @@
                                 <span class="slider"></span>
                             </label>
                             <span class="toggle-label">
-                                <strong>Word出力HTMLのレイアウト崩れ・隙間を修正する</strong>
-                                <span class="toggle-desc">表の回り込み（align属性）を解除し、不要な空段落を除去します</span>
+                                <strong>レイアウトバグ修正</strong>
+                                <span class="toggle-desc">Word出力HTMLのレイアウト崩れ・隙間を修正する。表の回り込み（align属性）を解除し、不要な空段落を除去します</span>
                             </span>
                         </div>
                     </div>
@@ -88,8 +77,8 @@
                                 <span class="slider"></span>
                             </label>
                             <span class="toggle-label">
-                                <strong>レイアウトをウィンドウ幅に依存させず固定する</strong>
-                                <span class="toggle-desc">ONにすると、狭い画面でもWord指定の固定幅のまま表示し、はみ出す場合は横スクロールになります（OFFの場合は従来通り狭い画面で自動的に折り返します）。上の「レイアウト修正」がONの場合のみ有効です</span>
+                                <strong>レイアウト固定化</strong>
+                                <span class="toggle-desc">レイアウトをウィンドウ幅に依存させず固定する。ONにすると、狭い画面でもWord指定の固定幅のまま表示し、はみ出す場合は横スクロールになります（OFFの場合は従来通り狭い画面で自動的に折り返します）。上の「レイアウトバグ修正」がONの場合のみ有効です</span>
                             </span>
                         </div>
                     </div>
@@ -101,8 +90,21 @@
                                 <span class="slider"></span>
                             </label>
                             <span class="toggle-label">
-                                <strong>本文をウィンドウ中央に配置する</strong>
-                                <span class="toggle-desc">ONにすると、本文を画面左端ではなく中央に表示し、余白部分をネイビー、本文部分を白にして明暗で区別します。上の「レイアウト修正」がONの場合のみ有効です</span>
+                                <strong>レイアウト美麗化</strong>
+                                <span class="toggle-desc">本文をウィンドウ中央に配置する。ONにすると、本文を画面左端ではなく中央に表示し、余白部分をネイビー、本文部分を白にして明暗で区別します。上の「レイアウトバグ修正」がONの場合のみ有効です</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="toggle-group">
+                            <label class="switch">
+                                <input type="checkbox" id="backup-toggle">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label">
+                                <strong>バックアップ作成</strong>
+                                <span class="toggle-desc">元ファイルのバックアップを同梱する。ZIPファイル内に変換前のオリジナルファイルを <code>.bak</code> 拡張子で同梱します</span>
                             </span>
                         </div>
                     </div>
@@ -172,7 +174,7 @@
         </main>
 
         <footer class="app-footer">
-            <p>Antigravity Powered | UTF-8 Migration Utility for macOS</p>
+            <p>&copy; 2026 合同会社Office鞆の浦</p>
         </footer>
     </div>
 
