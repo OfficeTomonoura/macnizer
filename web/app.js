@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const backupToggle = document.getElementById('backup-toggle');
     const wordFixToggle = document.getElementById('word-fix-toggle');
     const fixedLayoutToggle = document.getElementById('fixed-layout-toggle');
+    const centerContentToggle = document.getElementById('center-content-toggle');
 
     const form = document.getElementById('converter-form');
     const submitBtn = document.getElementById('submit-btn');
@@ -220,7 +221,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Word HTMLレイアウト修正ロジック ---
     // fixedLayout: true の場合、ウィンドウ幅に応じたレスポンシブ化を行わず、
     //              Word指定の固定幅を常に維持する（狭い画面では横スクロールになる）
-    function fixWordHtmlLayout(content, fixedLayout = false) {
+    // centerContent: true の場合、本文（WordSectionのdiv）をウィンドウ中央に配置する
+    function fixWordHtmlLayout(content, fixedLayout = false, centerContent = false) {
         let clean = content;
 
         // 1. <table> タグ内の align=left または align=right 属性を除去
@@ -262,9 +264,26 @@ document.addEventListener('DOMContentLoaded', () => {
      white-space: normal !important;
    }
  }`;
+        // centerContent=true: 本文（div.WordSectionN）を内容幅にfitさせた上で
+        //                     margin:auto で画面中央に配置する。
+        //                     さらに余白（body）と本文（div）を明暗で分け、
+        //                     本文が「用紙」のように浮いて見えるようにする
+        const centerBlock = `
+ body {
+   background: #191970 !important;
+ }
+ div[class^="WordSection"] {
+   max-width: fit-content;
+   margin-left: auto !important;
+   margin-right: auto !important;
+   background: #ffffff;
+   box-shadow: 0 0 12px rgba(0,0,0,0.25);
+   padding: 32px;
+   box-sizing: content-box;
+ }`;
         const customStyle = `
 <style>
- /* macnizer 回り込み解除の修正 */${fixedLayout ? '' : responsiveBlock}
+ /* macnizer 回り込み解除の修正 */${fixedLayout ? '' : responsiveBlock}${centerContent ? centerBlock : ''}
  table {
    float: none !important;
    clear: both !important;
@@ -281,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return clean;
     }
 
-    function processFileContent(arrayBuffer, fixWordLayout = false, fixedLayout = false) {
+    function processFileContent(arrayBuffer, fixWordLayout = false, fixedLayout = false, centerContent = false) {
         const uint8Array = new Uint8Array(arrayBuffer);
         
         let decodedText = null;
@@ -317,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let wordFixed = false;
         if (fixWordLayout) {
             const originalText = newText;
-            newText = fixWordHtmlLayout(newText, fixedLayout);
+            newText = fixWordHtmlLayout(newText, fixedLayout, centerContent);
             if (newText !== originalText) {
                 wordFixed = true;
             }
@@ -364,6 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const makeBackup = backupToggle.checked;
         const fixWordLayout = wordFixToggle.checked;
         const fixedLayout = fixedLayoutToggle.checked;
+        const centerContent = centerContentToggle.checked;
         appendLog(`一括変換処理を開始します... (対象ファイル: ${localFilesList.length}個)`, 'system');
         updateProgress(5, 'ZIPアーカイブの準備中...');
 
@@ -388,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (isHtml) {
                         // HTMLファイルの場合は文字コード変換およびWordレイアウト修正を実行
-                        const result = processFileContent(arrayBuffer, fixWordLayout, fixedLayout);
+                        const result = processFileContent(arrayBuffer, fixWordLayout, fixedLayout, centerContent);
 
                         if (result.success) {
                             if (result.status === 'success') {
