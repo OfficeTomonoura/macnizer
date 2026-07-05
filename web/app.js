@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedFilesCount = document.getElementById('selected-files-count');
     const backupToggle = document.getElementById('backup-toggle');
     const wordFixToggle = document.getElementById('word-fix-toggle');
+    const fixedLayoutToggle = document.getElementById('fixed-layout-toggle');
 
     const form = document.getElementById('converter-form');
     const submitBtn = document.getElementById('submit-btn');
@@ -217,7 +218,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Word HTMLレイアウト修正ロジック ---
-    function fixWordHtmlLayout(content) {
+    // fixedLayout: true の場合、ウィンドウ幅に応じたレスポンシブ化を行わず、
+    //              Word指定の固定幅を常に維持する（狭い画面では横スクロールになる）
+    function fixWordHtmlLayout(content, fixedLayout = false) {
         let clean = content;
 
         // 1. <table> タグ内の align=left または align=right 属性を除去
@@ -237,10 +240,15 @@ document.addEventListener('DOMContentLoaded', () => {
             clean = clean.replace(/(<head[^>]*?>)/i, `$1\n <meta name="viewport" content="width=device-width, initial-scale=1.0">`);
         }
 
-        // 4. レスポンシブ＆回り込み解除CSSの追加（</head>の直前）
-        const customStyle = `
-<style>
- /* macnizer レスポンシブ & 回り込み解除の修正 */
+        // 4. 過去バージョンのmacnizerが挿入した<style>ブロックを除去
+        //    （旧バージョンのレスポンシブ化メディアクエリ等が再変換後も残り続けるのを防ぐ）
+        clean = clean.replace(/\n?<style>\s*\/\*\s*macnizer[\s\S]*?<\/style>\n?/gi, '\n');
+
+        // 5. 回り込み解除CSSの追加（</head>の直前）
+        //    fixedLayout=false（デフォルト）: 従来通り狭い画面でテーブルを100%幅・自動レイアウトに変える
+        //    fixedLayout=true: レスポンシブ化を行わず、Word指定の固定幅を常に維持し、
+        //                      画面が狭い場合はブラウザの横スクロールに委ねる。
+        const responsiveBlock = `
  @media screen and (max-width: 768px) {
    table.MsoNormalTable, table[class*="Mso"] {
      width: 100% !important;
@@ -253,7 +261,10 @@ document.addEventListener('DOMContentLoaded', () => {
      width: auto !important;
      white-space: normal !important;
    }
- }
+ }`;
+        const customStyle = `
+<style>
+ /* macnizer 回り込み解除の修正 */${fixedLayout ? '' : responsiveBlock}
  table {
    float: none !important;
    clear: both !important;
@@ -265,14 +276,12 @@ document.addEventListener('DOMContentLoaded', () => {
  }
 </style>
 `;
-        if (!/macnizer レスポンシブ/i.test(clean)) {
-            clean = clean.replace(/(<\/head>)/i, `${customStyle}\n$1`);
-        }
+        clean = clean.replace(/(<\/head>)/i, `${customStyle}\n$1`);
 
         return clean;
     }
 
-    function processFileContent(arrayBuffer, fixWordLayout = false) {
+    function processFileContent(arrayBuffer, fixWordLayout = false, fixedLayout = false) {
         const uint8Array = new Uint8Array(arrayBuffer);
         
         let decodedText = null;
@@ -308,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let wordFixed = false;
         if (fixWordLayout) {
             const originalText = newText;
-            newText = fixWordHtmlLayout(newText);
+            newText = fixWordHtmlLayout(newText, fixedLayout);
             if (newText !== originalText) {
                 wordFixed = true;
             }
@@ -354,6 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const makeBackup = backupToggle.checked;
         const fixWordLayout = wordFixToggle.checked;
+        const fixedLayout = fixedLayoutToggle.checked;
         appendLog(`一括変換処理を開始します... (対象ファイル: ${localFilesList.length}個)`, 'system');
         updateProgress(5, 'ZIPアーカイブの準備中...');
 
@@ -378,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (isHtml) {
                         // HTMLファイルの場合は文字コード変換およびWordレイアウト修正を実行
-                        const result = processFileContent(arrayBuffer, fixWordLayout);
+                        const result = processFileContent(arrayBuffer, fixWordLayout, fixedLayout);
 
                         if (result.success) {
                             if (result.status === 'success') {
