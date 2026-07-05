@@ -197,14 +197,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const RE_CHARSET_HTML4 = /(content\s*=\s*['"][^'"]*charset\s*=\s*)(shift[-_]?jis|sjis|x-sjis|cp932|ms_kanji)(['"]?[^>]*>)/i;
     const RE_CHARSET_XML = /(<\?xml\s+[^>]*encoding\s*=\s*['"]?)(shift[-_]?jis|sjis|x-sjis|cp932|ms_kanji)(['"]?[^>]*\?>)/i;
 
+    // --- Word文書プロパティ（Author / Company）の書き換え ---
+    const NEW_DOC_AUTHOR = '德永塁';
+    const NEW_DOC_COMPANY = '合同会社Office鞆の浦';
+    const RE_O_AUTHOR = /(<o:Author>)([\s\S]*?)(<\/o:Author>)/i;
+    const RE_O_COMPANY = /(<o:Company>)([\s\S]*?)(<\/o:Company>)/i;
+
     function convertContent(content) {
         let modified = false;
-        
+        let propsModified = false;
+
         let newContent = content.replace(RE_CHARSET_HTML5, (match, p1, p2, p3) => {
             modified = true;
             return `${p1}utf-8${p3}`;
         });
-        
+
         newContent = newContent.replace(RE_CHARSET_HTML4, (match, p1, p2, p3) => {
             modified = true;
             return `${p1}utf-8${p3}`;
@@ -214,8 +221,18 @@ document.addEventListener('DOMContentLoaded', () => {
             modified = true;
             return `${p1}utf-8${p3}`;
         });
-        
-        return { content: newContent, modified };
+
+        newContent = newContent.replace(RE_O_AUTHOR, (match, p1, p2, p3) => {
+            propsModified = true;
+            return `${p1}${NEW_DOC_AUTHOR}${p3}`;
+        });
+
+        newContent = newContent.replace(RE_O_COMPANY, (match, p1, p2, p3) => {
+            propsModified = true;
+            return `${p1}${NEW_DOC_COMPANY}${p3}`;
+        });
+
+        return { content: newContent, modified, propsModified };
     }
 
     // --- Word HTMLレイアウト修正ロジック ---
@@ -330,9 +347,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return { success: false, status: 'error', message: '文字コードを判定できませんでした (UTF-8 / Shift-JIS ではありません)' };
         }
         
-        // 文字コード記述の置換
-        let { content: newText, modified: descModified } = convertContent(decodedText);
-        
+        // 文字コード記述の置換 / 文書プロパティ（Author・Company）の書き換え
+        let { content: newText, modified: descModified, propsModified } = convertContent(decodedText);
+
         let wordFixed = false;
         if (fixWordLayout) {
             const originalText = newText;
@@ -341,16 +358,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 wordFixed = true;
             }
         }
-        
+
         const encodingNeedsChange = (detectedEncoding === 'shift-jis');
-        
-        if (!encodingNeedsChange && !descModified && !wordFixed) {
+
+        if (!encodingNeedsChange && !descModified && !propsModified && !wordFixed) {
             return { success: true, status: 'skip', message: 'すでにUTF-8（変換不要）', originalText: decodedText };
         }
-        
+
         const messageParts = [];
         if (encodingNeedsChange) messageParts.push('エンコード変換 (Shift-JIS -> UTF-8)');
         if (descModified) messageParts.push('文字コードタグ書換 (utf-8)');
+        if (propsModified) messageParts.push('文書プロパティ書換 (Author/Company)');
         if (wordFixed) messageParts.push('Wordレイアウト修正');
 
         return {
