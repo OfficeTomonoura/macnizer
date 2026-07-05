@@ -227,6 +227,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const emptyParagraphRegex = /<p[^>]*?>\s*<span[^>]*?font-size:\s*1\.0pt[^>]*?>.*?<\/span>\s*<\/p>/gi;
         clean = clean.replace(emptyParagraphRegex, '');
 
+        // 2b. 中身が <o:p>&nbsp;</o:p> のみの空段落（Word側で意図されていない行送り用の空行）を
+        //     spanのfont-sizeに関わらず丸ごと削除する（margin:0だけでは行の高さ分の余白が残るため）
+        const nbspOnlyParagraphRegex = /<p[^>]*?>\s*(?:<span[^>]*?>\s*)*<o:p>&nbsp;<\/o:p>\s*(?:<\/span>\s*)*<\/p>/gi;
+        clean = clean.replace(nbspOnlyParagraphRegex, '');
+
         // 3. ビューポートメタタグの追加（head内になければ追加）
         if (!/<meta[^>]*?name=['"]?viewport['"]?/i.test(clean)) {
             clean = clean.replace(/(<head[^>]*?>)/i, `$1\n <meta name="viewport" content="width=device-width, initial-scale=1.0">`);
@@ -252,6 +257,11 @@ document.addEventListener('DOMContentLoaded', () => {
  table {
    float: none !important;
    clear: both !important;
+ }
+ /* class無し<p>はmso-margin-top/bottom-altがブラウザに無視され既定の上下マージンが入るため除去 */
+ p:not([class]) {
+   margin-top: 0;
+   margin-bottom: 0;
  }
 </style>
 `;
