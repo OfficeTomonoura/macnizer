@@ -3,7 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const folderInput = document.getElementById('folder-input');
     const selectedFilesSummary = document.getElementById('selected-files-summary');
-    const selectedFilesCount = document.getElementById('selected-files-count');
+    const agendaFilesCount = document.getElementById('agenda-files-count');
+    const otherFilesCount = document.getElementById('other-files-count');
+    const selectedNamesSummary = document.getElementById('selected-names-summary');
+    const selectedNames = document.getElementById('selected-names');
     const backupToggle = document.getElementById('backup-toggle');
     const wordFixToggle = document.getElementById('word-fix-toggle');
     const fixedLayoutToggle = document.getElementById('fixed-layout-toggle');
@@ -47,6 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // 状態管理
     let localFilesList = []; // 読み込んだ全ファイル（HTML以外も含む）
 
+    // 変換対象とするファイル名のパターン
+    // 例: 02-02K-4567Sあいうお.htm / 02-02K-4567S(1).htm / 02-02K-4567S.html
+    // NN-NNA-NNNNA の後に任意の文字列（省略可）が続き、拡張子が .htm または .html
+    const RE_TARGET_FILENAME = /^\d{2}-\d{2}[A-Za-z]-\d{4}[A-Za-z].*\.(?:htm|html)$/i;
+
+    function isTargetFilename(filename) {
+        return RE_TARGET_FILENAME.test(filename);
+    }
+
     // --- 共通UIユーティリティ ---
     function appendLog(text, type = 'info') {
         const line = document.createElement('div');
@@ -77,10 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateSubmitButtonState() {
         if (localFilesList.length > 0) {
-            const htmlCount = localFilesList.filter(f => {
-                const ext = f.name.split('.').pop().toLowerCase();
-                return ext === 'html' || ext === 'htm';
-            }).length;
+            const htmlCount = localFilesList.filter(f => isTargetFilename(f.name)).length;
             submitBtn.disabled = false;
             submitBtn.querySelector('.btn-text').innerText = `変換してZIPダウンロード (HTML: ${htmlCount}個 / 総ファイル: ${localFilesList.length}個)`;
         } else {
@@ -193,17 +202,40 @@ document.addEventListener('DOMContentLoaded', () => {
         handleFilesSelected();
     });
 
+    // 選択されたファイル群から、アップロードされたフォルダ名・ファイル名（最上位階層）を重複無しで抽出する
+    function getSelectedRootNames(files) {
+        const names = [];
+        const seen = new Set();
+        files.forEach((f) => {
+            const rel = f.relativePath || f.name;
+            const root = rel.includes('/') ? rel.split('/')[0] : rel;
+            if (!seen.has(root)) {
+                seen.add(root);
+                names.push(root);
+            }
+        });
+        return names;
+    }
+
     function handleFilesSelected() {
         if (localFilesList.length > 0) {
-            const htmlCount = localFilesList.filter(f => {
-                const ext = f.name.split('.').pop().toLowerCase();
-                return ext === 'html' || ext === 'htm';
-            }).length;
+            const htmlCount = localFilesList.filter(f => isTargetFilename(f.name)).length;
+            const otherCount = localFilesList.length - htmlCount;
+            const rootNames = getSelectedRootNames(localFilesList);
+            const MAX_NAMES_SHOWN = 5;
+            const namesLabel = rootNames.length > MAX_NAMES_SHOWN
+                ? `${rootNames.slice(0, MAX_NAMES_SHOWN).join('、')} 他${rootNames.length - MAX_NAMES_SHOWN}件`
+                : rootNames.join('、');
+
+            selectedNamesSummary.classList.remove('hidden');
+            selectedNames.innerText = namesLabel;
 
             selectedFilesSummary.classList.remove('hidden');
-            selectedFilesCount.innerText = `${localFilesList.length} (うちHTML: ${htmlCount})`;
-            appendLog(`ファイルを検出しました。 (総ファイル数: ${localFilesList.length}個、HTMLファイル: ${htmlCount}個)`, 'success');
+            agendaFilesCount.innerText = htmlCount;
+            otherFilesCount.innerText = otherCount;
+            appendLog(`ファイルを検出しました。 (選択: ${namesLabel} / 議案ファイル: ${htmlCount}個、その他: ${otherCount}個)`, 'success');
         } else {
+            selectedNamesSummary.classList.add('hidden');
             selectedFilesSummary.classList.add('hidden');
             appendLog('対象となるファイルが見つかりませんでした。', 'skip');
         }
@@ -271,6 +303,13 @@ document.addEventListener('DOMContentLoaded', () => {
         //     spanのfont-sizeに関わらず丸ごと削除する（margin:0だけでは行の高さ分の余白が残るため）
         const nbspOnlyParagraphRegex = /<p[^>]*?>\s*(?:<span[^>]*?>\s*)*<o:p>&nbsp;<\/o:p>\s*(?:<\/span>\s*)*<\/p>/gi;
         clean = clean.replace(nbspOnlyParagraphRegex, '');
+
+        // 2c. パンくずナビ（トップ/事業要綱/事業概要/…/上程日程/）の段落にクラスを付与する。
+        //     このナビはWord出力時点ではclass無し<p>のため、後述の「class無し<p>は余白ゼロ」
+        //     ルール（p:not([class])）に巻き込まれて上下の余白が失われてしまう。
+        //     クラスを付けてそのルールの対象外にし、ブラウザ既定の余白（変換前と同じ見た目）を保持する。
+        const RE_BREADCRUMB_NAV = /<p(?:(?!<\/p>)[\s\S])*?href="#トップ"(?:(?!<\/p>)[\s\S])*?<\/p>/gi;
+        clean = clean.replace(RE_BREADCRUMB_NAV, (match) => match.replace(/^<p>/i, '<p class="macnizer-breadcrumb-nav">'));
 
         // 3. ビューポートメタタグの追加（head内になければ追加）
         if (!/<meta[^>]*?name=['"]?viewport['"]?/i.test(clean)) {
@@ -436,14 +475,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const relPath = file.relativePath || file.name;
                 updateProgress(progressVal, `ファイルを処理中 (${i + 1}/${localFilesList.length}): ${relPath}`);
 
-                const ext = file.name.split('.').pop().toLowerCase();
-                const isHtml = (ext === 'html' || ext === 'htm');
+                const isHtml = isTargetFilename(file.name);
 
                 try {
                     const arrayBuffer = await file.arrayBuffer();
 
                     if (isHtml) {
-                        // HTMLファイルの場合は文字コード変換およびWordレイアウト修正を実行
+                        // 命名規則に一致する議案ファイルのみ、文字コード変換およびWordレイアウト修正を実行
                         const result = processFileContent(arrayBuffer, fixWordLayout, fixedLayout, centerContent);
 
                         if (result.success) {
@@ -476,7 +514,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             zip.file(relPath, new Uint8Array(arrayBuffer));
                         }
                     } else {
-                        // HTML以外（画像、CSS、JS、その他）はバイナリのまま無変換でZIPに追加
+                        // 変換対象外（命名規則に一致しないHTMLや画像・CSS・JSなど）はバイナリのまま無変換でZIPに追加
+                        appendLog(`[対象外] ${relPath} (変換対象のファイル名パターンに一致しないためスキップ)`, 'skip');
                         zip.file(relPath, new Uint8Array(arrayBuffer));
                     }
                 } catch (e) {
